@@ -1,0 +1,66 @@
+﻿@page "/shareables"
+@using BlazorState;
+@using Humanizer;
+@using NLendApp.Features.Shareables;
+@using NLendApp.Features.User;
+@inject IShareableService Service;
+
+@inherits BlazorStateComponent
+
+<PageTitle>Shareables</PageTitle>
+
+<h1>Borrow a tool</h1>
+
+@if (State.Items?.Length == 0)
+{
+	<p><em>Loading...</em></p>
+}
+else
+{
+	<div class="container mt-4">
+		<div class="row">
+			@foreach (var item in State.Items ?? new ShareableItem[0])
+			{
+				<Card Class="mb-4" Style="width:18rem;">
+					<img class="rounded-top pt-2"
+						 style="max-height: 250px; object-fit: contain;"
+						 src="@item.Image"
+						 alt="@item.Name" />
+					<CardBody>
+						<CardTitle>@item.Name</CardTitle>
+						<CardText Style="height: 120px;">@item.Description</CardText>
+						<Button Color="ButtonColor.Primary"
+								Disabled="!CanBorrow(item)"
+								Type="ButtonType.Button"
+								@onclick="() => Service.BorrowItem(item, UserState.LoggedInUser!)">
+							<Tooltip Title="Borrow" Placement="TooltipPlacement.Right">
+								<Icon Name="IconName.Basket"></Icon>
+							</Tooltip>
+						</Button>
+					</CardBody>
+					<CardFooter>
+						<small class="text-muted">Belongs to: @UserState.GetUserById(item.OwnerId)?.FullName <br />
+						Lent by: <b class="@(item.LentBy == null ? "text-success" : "text-secondary")">@(item.LentBy != null ? UserState.GetUserById(item.LentBy)?.FullName + " " + item.LentOn.Humanize() : "Available")</b></small>
+					</CardFooter>
+				</Card>
+			}
+		</div>
+	</div>
+}
+
+@code {
+	ShareablesState State => GetState<ShareablesState>();
+	UserState UserState => GetState<UserState>();
+
+	protected override async Task OnInitializedAsync()
+	{
+		await Service.LoadDbData();
+	}
+
+	private bool CanBorrow(ShareableItem item)
+	{
+		return UserState.LoggedInUser != null
+			&& item.LentBy == null
+			&& item.OwnerId != UserState.LoggedInUser.Id;
+	}
+}
