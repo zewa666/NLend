@@ -1,5 +1,6 @@
 ﻿@page "/shareables"
 @using BlazorState;
+@using System;
 @using Humanizer;
 @using NLendApp.Features.Shareables;
 @using NLendApp.Features.User;
@@ -32,15 +33,15 @@ else
 						<Button Color="ButtonColor.Primary"
 								Disabled="!CanBorrow(item)"
 								Type="ButtonType.Button"
-								@onclick="() => Service.BorrowItem(item, UserState.LoggedInUser!)">
+								@onclick="() => Service.BorrowItem(item, userState.LoggedInUser!)">
 							<Tooltip Title="Borrow" Placement="TooltipPlacement.Right">
 								<Icon Name="IconName.Basket"></Icon>
 							</Tooltip>
 						</Button>
 					</CardBody>
 					<CardFooter>
-						<small class="text-muted">Belongs to: @UserState.GetUserById(item.OwnerId)?.FullName <br />
-						Lent by: <b class="@(item.LentBy == null ? "text-success" : "text-secondary")">@(item.LentBy != null ? UserState.GetUserById(item.LentBy)?.FullName + " " + item.LentOn.Humanize() : "Available")</b></small>
+						<small class="text-muted">Belongs to: @userState.GetUserById(item.OwnerId)?.FullName <br />
+						Lent by: <b class="@(item.LentBy == null ? "text-success" : "text-secondary")">@(item.LentBy != null ? userState.GetUserById(item.LentBy)?.FullName + " " + item.LentOn.Humanize() : "Available")</b></small>
 					</CardFooter>
 				</Card>
 			}
@@ -50,17 +51,65 @@ else
 
 @code {
 	ShareablesState State => GetState<ShareablesState>();
-	UserState UserState => GetState<UserState>();
+	UserState userState => GetState<UserState>();
+
+	[InjectState<UserState>(nameof(UserState.Users))]
+	public List<User> Users;
 
 	protected override async Task OnInitializedAsync()
 	{
+		this.SetupState();
 		await Service.LoadDbData();
+	}
+
+	public object GetStat<T>()
+	{
+		return GetState<T>();
+	}
+
+	private void SetupState()
+	{
+		var fieldAttributeMap = this.GetType()
+			.GetFields()
+			.Select(field => {
+				object attribute = field.GetCustomAttributes(true)
+					.FirstOrDefault((a) => a.GetType().Name == "InjectState`1");
+				if (attribute == null)
+				{
+					return (null, null);
+				}
+
+				return (field, attribute);
+			})
+			.Where(x => x.field != null)
+			.ToList();
+
+		foreach (var x in fieldAttributeMap)
+		{
+			dynamic genericType = x.attribute
+				.GetType()
+				.GetProperty("Type")
+				.GetValue(x.attribute, null);
+			var state = typeof(Shareables)
+				.GetMethod("GetStat")
+				.MakeGenericMethod(genericType)
+				.Invoke(this, null);
+
+			var selector = x.attribute
+				.GetType()
+				.GetProperty("Selector")
+				.GetValue(x.attribute, null)
+				.ToString();
+			var stateProp = state.GetType().GetProperty(selector);
+			var val = stateProp?.GetValue(state, null);
+			x.field.SetValue(this, val);
+		}
 	}
 
 	private bool CanBorrow(ShareableItem item)
 	{
-		return UserState.LoggedInUser != null
+		return userState.LoggedInUser != null
 			&& item.LentBy == null
-			&& item.OwnerId != UserState.LoggedInUser.Id;
+			&& item.OwnerId != userState.LoggedInUser.Id;
 	}
 }
